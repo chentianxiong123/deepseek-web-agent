@@ -114,19 +114,10 @@ def _build_mcp():
         allowed_origins=_allowed_origins if _allowed_origins else None,
     )
 
-    # 获取 SSE 应用
-    mcp_sse_app = mcp.http_app(
-        transport="sse",
-        allowed_hosts=_allowed_hosts if _allowed_hosts else None,
-        allowed_origins=_allowed_origins if _allowed_origins else None,
-    )
-
     return {
         "mcp": mcp,
         "http_lifespan": mcp_http_app.router.lifespan_context,
-        "sse_lifespan": mcp_sse_app.router.lifespan_context,
         "http_app": mcp_http_app,
-        "sse_app": mcp_sse_app,
         "has_auth": bool(api_key),
         "api_key": api_key,
     }

@@ -1511,7 +1511,6 @@ async def render_mcp():
     content += '  <div class="status-row"><span class="lbl">服务名</span><span class="val">deepseek-web-agent</span></div>\n'
     content += '  <div class="status-row"><span class="lbl">API Key</span><span class="val" id="mcp-key">' + key_text + '</span></div>\n'
     content += '  <div class="status-row"><span class="lbl">Streamable HTTP</span><span class="val">POST http://127.0.0.1:' + str(_port) + '/mcp/mcp</span></div>\n'
-    content += '  <div class="status-row"><span class="lbl">SSE</span><span class="val">GET  http://127.0.0.1:' + str(_port) + '/sse/sse</span></div>\n'
     content += '</div>\n'
     content += '<div class="card">\n'
     content += '  <div class="toolbar">\n'
