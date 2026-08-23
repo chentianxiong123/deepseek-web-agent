@@ -19,6 +19,8 @@ DEFAULT_CONFIG = {
     "thinking_enabled": True,
     "proxy": "",
     "account_label": "default",
+    "api_key": "",          # MCP 鉴权密钥（空=不鉴权）
+    "public_url": "http://127.0.0.1:48391",  # 公网地址（用于 MCP 传输安全校验）
     "terminal": "powershell",  # cmd / powershell / bash
     "model": "deepseek-v4-flash",  # deepseek-v4-flash / deepseek-v4-pro
     "backend": "deepseek",  # deepseek / qwen

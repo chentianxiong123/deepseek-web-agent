@@ -255,6 +255,77 @@ else:
     print(f"[Backend] {_backend.id} ({_backend.display_name})")
 
 
+# ── MCP Server 挂载（参考 pplx-proxy 模式）──────────────────────
+
+from mcp_server import get_mcp_app as _get_mcp_app
+_mcp = _get_mcp_app()
+
+if _mcp is not None:
+    mcp_http_app = _mcp["http_app"]
+    mcp_sse_app = _mcp["sse_app"]
+    api_key = _mcp["api_key"]
+    http_lifespan = _mcp["http_lifespan"]
+
+    # 合并 FastAPI lifespan + MCP Streamable HTTP lifespan
+    from contextlib import asynccontextmanager as _acm
+
+    @_acm
+    async def _combined_lifespan(_app):
+        async with http_lifespan(mcp_http_app):
+            print("[MCP] Streamable HTTP lifespan started")
+            yield
+        print("[MCP] Streamable HTTP lifespan stopped")
+
+    app.router.lifespan_context = _combined_lifespan
+
+    if api_key:
+        # 带 API Key 鉴权：/{KEY}/mcp 和 /{KEY}/sse
+        _mcp_prefix = f"/{api_key}"
+        _mcp_pfx_len = len(_mcp_prefix)
+
+        class _MCPAuthMiddleware:
+            """拦截 /{KEY}/mcp|sse，校验 key 后转给 MCP 应用。"""
+
+            def __init__(self, asgi_app):
+                self.app = asgi_app
+
+            async def __call__(self, scope, receive, send):
+                if scope["type"] in ("http", "websocket"):
+                    path = scope.get("path", "")
+                    if path.startswith(_mcp_prefix + "/mcp"):
+                        s = dict(scope)
+                        s["path"] = path[_mcp_pfx_len:]
+                        if s.get("raw_path"):
+                            s["raw_path"] = s["raw_path"][_mcp_pfx_len:] if isinstance(s["raw_path"], bytes) else s["raw_path"]
+                        await mcp_http_app(s, receive, send)
+                        return
+                    if path.startswith(_mcp_prefix + "/sse") or path.startswith(_mcp_prefix + "/messages"):
+                        s = dict(scope)
+                        s["path"] = path[_mcp_pfx_len:]
+                        if s.get("raw_path"):
+                            s["raw_path"] = s["raw_path"][_mcp_pfx_len:] if isinstance(s["raw_path"], bytes) else s["raw_path"]
+                        await mcp_sse_app(s, receive, send)
+                        return
+                    if path.startswith("/messages"):
+                        await mcp_sse_app(dict(scope), receive, send)
+                        return
+                    if path.startswith("/mcp") or path.startswith("/sse"):
+                        from starlette.responses import JSONResponse as _JR
+                        await _JR({"error": {"message": "MCP requires authentication. Use /<api-key>/mcp or /<api-key>/sse", "type": "auth_error"}}, status_code=401)(scope, receive, send)
+                        return
+                await self.app(scope, receive, send)
+
+        app.add_middleware(_MCPAuthMiddleware)
+        print(f"[MCP] Mounted with key auth: /{api_key[:8]}***/mcp + /{api_key[:8]}***/sse")
+    else:
+        app.mount("/mcp", mcp_http_app)
+        app.mount("/sse", mcp_sse_app)
+        print("[MCP] Mounted at /mcp/mcp + /sse/sse [NO AUTH]")
+        print("[MCP] Set api_key in config.json to secure it.")
+else:
+    print("[MCP] Disabled (fastmcp package not installed)")
+
+
 # ── 启动 ──────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -267,13 +338,15 @@ if __name__ == "__main__":
     cfg = config.load_config()
     port = cfg.get("port", 48391)
 
-    print(f"=== DeepSeek Web Agent Proxy v0.4.0 ===")
+    print(f"=== DeepSeek Web Agent Proxy v0.4.0 + MCP ===")
     print(f"Listening on http://127.0.0.1:{port}")
     print()
     print("Endpoints:")
     print(f"  POST /v1/chat/completions  →  OpenAI Chat API")
     print(f"  GET  /admin                →  Admin Panel")
     print(f"  GET  /health               →  Health check")
+    print(f"  POST /mcp                  →  MCP Streamable HTTP")
+    print(f"  GET  /sse                  →  MCP SSE")
     print()
 
     # 用 Server 类直接跑，不 spawn 子进程，避免残留孤儿进程
