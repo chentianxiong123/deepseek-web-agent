@@ -128,6 +128,7 @@ def _sidebar(active_page):
         ("/admin/prompts", "📝", "提示词"),
         ("/admin/parser-flow", "🔧", "解析器"),
         ("/admin/debug", "🔍", "调试"),
+        ("/admin/mcp", "🤖", "MCP"),
     ]
     links = ""
     for href, icon, label in nav_items:
@@ -1421,4 +1422,167 @@ loadAll();
 """
 
     sidebar = _sidebar("/admin/prompts")
-    return _page_shell("提示词管理", sidebar, content, js)
+
+
+async def render_mcp():
+    """MCP 管理页"""
+    import mcp_server as _ms
+    _mcp = _ms.get_mcp_app()
+    enabled = _mcp is not None
+    api_key = (_mcp.get("api_key") or "") if enabled else ""
+    tools_info = []
+    if enabled:
+        try:
+            tools = await _mcp["mcp"].list_tools()
+            for t in tools:
+                tools_info.append({
+                    "name": t.name,
+                    "description": getattr(t, "description", "") or "",
+                    "input_schema": getattr(t, "input_schema", {}),
+                })
+        except Exception as e:
+            import sys
+            print("MCP tools error:", e, file=sys.stderr)
+
+    try:
+        import config as _cfg
+        _port = _cfg.load_config().get("port", 48391)
+    except Exception:
+        _port = 48391
+
+    tools_html = ""
+    for t in tools_info:
+        name_esc = escape_json_js(t["name"])
+        tools_html += '<div class="item-card">\n'
+        tools_html += '  <div class="item-head">\n'
+        tools_html += '    <div class="item-info">\n'
+        tools_html += '      <div class="item-title">🔧 <b>' + t["name"] + '</b></div>\n'
+        tools_html += '      <div class="item-meta">' + t["description"] + '</div>\n'
+        tools_html += '    </div>\n'
+        tools_html += '    <button class="btn-primary btn-sm" onclick="openToolTest(\'' + name_esc + '\')">测试</button>\n'
+        tools_html += '  </div>\n</div>\n'
+    if not tools_html:
+        tools_html = '<div class="empty">无工具</div>'
+
+    status_text = "✅ 已启用" if enabled else "❌ 未安装 fastmcp"
+    key_text = "✅ 已配置" if api_key else "⚠️ 未配置（无鉴权）"
+    import json
+    js_tools = json.dumps(tools_info, ensure_ascii=False)
+
+    content = '<div class="card">\n'
+    content += '  <div class="toolbar">\n'
+    content += '    <h2>🤖 MCP Server</h2>\n'
+    content += '    <div class="actions">\n'
+    content += '      <button class="btn-ghost btn-sm" onclick="testMcpStatus()">🔄 刷新状态</button>\n'
+    content += '    </div>\n'
+    content += '  </div>\n'
+    content += '  <div class="status-row"><span class="lbl">状态</span><span class="val" id="mcp-status">' + status_text + '</span></div>\n'
+    content += '  <div class="status-row"><span class="lbl">服务名</span><span class="val">deepseek-web-agent</span></div>\n'
+    content += '  <div class="status-row"><span class="lbl">API Key</span><span class="val" id="mcp-key">' + key_text + '</span></div>\n'
+    content += '  <div class="status-row"><span class="lbl">Streamable HTTP</span><span class="val">POST http://127.0.0.1:' + str(_port) + '/mcp/mcp</span></div>\n'
+    content += '  <div class="status-row"><span class="lbl">SSE</span><span class="val">GET  http://127.0.0.1:' + str(_port) + '/sse/sse</span></div>\n'
+    content += '</div>\n'
+    content += '<div class="card">\n'
+    content += '  <div class="toolbar">\n'
+    content += '    <h2>🛠 MCP 工具列表 <span id="mcp-tool-count" style="font-size:10px;color:#999;font-weight:400"></span></h2>\n'
+    content += '  </div>\n'
+    content += '  <div id="mcp-tools-list">' + tools_html + '</div>\n'
+    content += '</div>\n'
+    content += '<div class="card">\n'
+    content += '  <div class="toolbar">\n'
+    content += '    <h2>📋 API 示例</h2>\n'
+    content += '  </div>\n'
+    content += '  <pre style="background:#f5f5f5;padding:10px;border-radius:5px;font-size:11px;overflow-x:auto"># 1. initialize（获取 session-id）\n'
+    content += "curl -X POST http://127.0.0.1:" + str(_port) + "/mcp/mcp -H Content-Type:application/json -H 'Accept: application/json, text/event-stream' "
+    content += "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\"}}}'\n\n"
+    content += '# 2. tools/list（替换 SESSION_ID）\n'
+    content += "curl -X POST http://127.0.0.1:" + str(_port) + "/mcp/mcp -H Content-Type:application/json -H 'Accept: application/json, text/event-stream' "
+    content += "-H 'MCP-Session-Id: SESSION_ID' -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}'\n\n"
+    content += '# 3. 调用 ask_deepseek\n'
+    content += "curl -X POST http://127.0.0.1:" + str(_port) + "/mcp/mcp -H Content-Type:application/json -H 'Accept: application/json, text/event-stream' "
+    content += "-H 'MCP-Session-Id: SESSION_ID' -d '{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"ask_deepseek\",\"arguments\":{\"query\":\"你好\"}}}'"
+    content += '</pre>\n'
+    content += '</div>'
+
+    js = "var MCP_TOOLS = " + js_tools + ";\n"
+    js += "var MCP_ENABLED = " + str(enabled) + ";\n"
+    js += "var MCP_PORT = " + str(_port) + ";\n\n"
+    js += "function testMcpStatus() {\n"
+    js += "    var e = document.getElementById('mcp-status');\n"
+    js += "    e.textContent = MCP_ENABLED ? '✅ 已启用' : '❌ 未安装';\n"
+    js += "    e.style.color = MCP_ENABLED ? '#389e0d' : '#cf1322';\n"
+    js += "}\n\n"
+    js += "function openToolTest(name) {\n"
+    js += "    var tool = MCP_TOOLS.find(function(t) { return t.name === name; });\n"
+    js += "    if (!tool) return;\n"
+    js += "    var props = [];\n"
+    js += "    if (tool.input_schema && tool.input_schema.properties) {\n"
+    js += "        props = Object.keys(tool.input_schema.properties);\n"
+    js += "    }\n"
+    js += "    var h = '';\n"
+    js += "    props.forEach(function(p) {\n"
+    js += "        var pr = tool.input_schema.properties[p];\n"
+    js += "        var def = pr.default || '';\n"
+    js += "        var tp = pr.type || 'string';\n"
+    js += "        if (tp === 'boolean') {\n"
+    js += "            h += '<div style=\"margin-bottom:8px\"><label style=\"font-size:11px\">' + p + '</label>'\n"
+    js += "                + '<input id=\"mcp_arg_' + p + '\" type=\"checkbox\"' + (def ? ' checked' : '') + '></div>';\n"
+    js += "        } else {\n"
+    js += "            h += '<div style=\"margin-bottom:8px\"><label style=\"font-size:11px\">' + p + '</label>'\n"
+    js += "                + '<input id=\"mcp_arg_' + p + '\" placeholder=\"' + (def || ('请输入 ' + p)) + '\" value=\"' + def + '\"></div>';\n"
+    js += "        }\n"
+    js += "    });\n"
+    js += "    document.getElementById('modalTitle').textContent = '🔧 测试工具: ' + name;\n"
+    js += "    document.getElementById('modalMeta').textContent = tool.description || '';\n"
+    js += "    document.getElementById('modalBody').innerHTML = '<div style=\"padding:4px 0\">' + h + '</div>';\n"
+    js += "    document.getElementById('modalFoot').innerHTML = '<button class=\"btn-ghost\" onclick=\"closeModal()\">取消</button> <button class=\"btn-primary\" onclick=\"callMcpTool(\\'' + name + '\\')\">▶ 执行</button>';\n"
+    js += "    document.getElementById('modal').style.display = 'flex';\n"
+    js += "}\n\n"
+    js += "async function callMcpTool(name) {\n"
+    js += "    var tool = MCP_TOOLS.find(function(t) { return t.name === name; });\n"
+    js += "    if (!tool) return;\n"
+    js += "    var args = {};\n"
+    js += "    var props = [];\n"
+    js += "    if (tool.input_schema && tool.input_schema.properties) {\n"
+    js += "        props = Object.keys(tool.input_schema.properties);\n"
+    js += "    }\n"
+    js += "    props.forEach(function(p) {\n"
+    js += "        var el = document.getElementById('mcp_arg_' + p);\n"
+    js += "        if (!el) return;\n"
+    js += "        var tp = (tool.input_schema.properties[p].type || 'string');\n"
+    js += "        var val = el.type === 'checkbox' ? el.checked : el.value;\n"
+    js += "        if (tp === 'number' || tp === 'integer') val = Number(val);\n"
+    js += "        if (tp === 'boolean') val = el.checked;\n"
+    js += "        if (val !== '') args[p] = val;\n"
+    js += "    });\n"
+    js += "    var btn = event.target;\n"
+    js += "    btn.disabled = true;\n"
+    js += "    btn.textContent = '⏳ 执行中...';\n"
+    js += "    document.getElementById('modalMeta').textContent = '正在调用 ' + name + '...';\n"
+    js += "    try {\n"
+    js += "        var r = await fetch('/api/mcp/call', {\n"
+    js += "            method: 'POST',\n"
+    js += "            headers: {'Content-Type': 'application/json'},\n"
+    js += "            body: JSON.stringify({name: name, arguments: args})\n"
+    js += "        });\n"
+    js += "        var d = await r.json();\n"
+    js += "        if (d.ok) {\n"
+    js += "            document.getElementById('modalBody').innerHTML = '<pre style=\"background:#f6ffed;border:1px solid #b7eb8f;padding:10px;border-radius:5px;font-size:11px;white-space:pre-wrap\">' + escapeHtml(d.result || JSON.stringify(d)) + '</pre>';\n"
+    js += "        } else {\n"
+    js += "            document.getElementById('modalBody').innerHTML = '<pre style=\"background:#fff2f0;border:1px solid #ffa39e;padding:10px;border-radius:5px;font-size:11px;color:#cf1322\">Error: ' + escapeHtml(d.error || JSON.stringify(d)) + '</pre>';\n"
+    js += "        }\n"
+    js += "    } catch(e) {\n"
+    js += "        document.getElementById('modalBody').innerHTML = '<pre style=\"background:#fff2f0;border:1px solid #ffa39e;padding:10px;border-radius:5px;font-size:11px;color:#cf1322\">网络错误: ' + escapeHtml(e.message) + '</pre>';\n"
+    js += "    } finally {\n"
+    js += "        btn.disabled = false;\n"
+    js += "        btn.textContent = '▶ 执行';\n"
+    js += "    }\n"
+    js += "}\n\n"
+    js += "(function() {\n"
+    js += "    var el = document.getElementById('mcp-tools-list');\n"
+    js += "    var ce = document.getElementById('mcp-tool-count');\n"
+    js += "    if (ce) ce.textContent = '(' + MCP_TOOLS.length + ' 个)';\n"
+    js += "})();\n"
+
+    sidebar = _sidebar("/admin/mcp")
+    return _page_shell("MCP", sidebar, content, js)

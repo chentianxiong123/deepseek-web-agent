@@ -51,6 +51,48 @@ async def admin_prompts():
     return HTMLResponse(render_prompts())
 
 
+@router.get("/admin/mcp")
+async def admin_mcp():
+    from admin_page import render_mcp
+    return HTMLResponse(await render_mcp())
+
+
+@router.post("/api/mcp/call")
+async def api_mcp_call(request: Request):
+    """调用 MCP 工具（供管理页面测试用）"""
+    from mcp_server import get_mcp_app
+    import asyncio
+    body = await request.json()
+    tool_name = body.get("name", "")
+    arguments = body.get("arguments", {})
+
+    if not tool_name:
+        return JSONResponse({"ok": False, "error": "name is required"})
+
+    mcp = get_mcp_app()
+    if not mcp:
+        return JSONResponse({"ok": False, "error": "MCP not available (fastmcp not installed)"})
+
+    try:
+        tool = await mcp["mcp"].get_tool(tool_name)
+        if not tool:
+            return JSONResponse({"ok": False, "error": f"Tool '{tool_name}' not found"})
+        result = await mcp["mcp"].call_tool(tool_name, arguments)
+        # FastMCP call_tool 返回 ToolResult，取 text
+        text = ""
+        if hasattr(result, "content"):
+            for block in result.content:
+                if hasattr(block, "text"):
+                    text += block.text
+                elif isinstance(block, dict) and "text" in block:
+                    text += block["text"]
+        else:
+            text = str(result) if result else ""
+        return JSONResponse({"ok": True, "result": text.strip()})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/api/prompts")
 async def api_get_prompts():
     from prompts import manager
