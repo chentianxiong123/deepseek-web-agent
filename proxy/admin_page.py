@@ -1494,13 +1494,16 @@ async def render_mcp():
     content += '  </div>\n'
     content += '  <pre style="background:#f5f5f5;padding:10px;border-radius:5px;font-size:11px;overflow-x:auto"># 1. initialize（获取 session-id）\n'
     content += "curl -X POST http://127.0.0.1:" + str(_port) + "/mcp/mcp -H Content-Type:application/json -H 'Accept: application/json, text/event-stream' "
-    content += "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\"}}}'\n\n"
-    content += '# 2. tools/list（替换 SESSION_ID）\n'
+    content += "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}'\n\n"
+    content += '# 2. initialized 通知（必须）\n'
     content += "curl -X POST http://127.0.0.1:" + str(_port) + "/mcp/mcp -H Content-Type:application/json -H 'Accept: application/json, text/event-stream' "
-    content += "-H 'MCP-Session-Id: SESSION_ID' -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}'\n\n"
-    content += '# 3. 调用 ask_deepseek\n'
+    content += "-H 'Mcp-Session-Id: SESSION_ID' -d '{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}'\n\n"
+    content += '# 3. tools/list（列出所有工具）\n'
     content += "curl -X POST http://127.0.0.1:" + str(_port) + "/mcp/mcp -H Content-Type:application/json -H 'Accept: application/json, text/event-stream' "
-    content += "-H 'MCP-Session-Id: SESSION_ID' -d '{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"ask_deepseek\",\"arguments\":{\"query\":\"你好\"}}}'"
+    content += "-H 'Mcp-Session-Id: SESSION_ID' -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}'\n\n"
+    content += '# 4. 调用 ask_deepseek\n'
+    content += "curl -X POST http://127.0.0.1:" + str(_port) + "/mcp/mcp -H Content-Type:application/json -H 'Accept: application/json, text/event-stream' "
+    content += "-H 'Mcp-Session-Id: SESSION_ID' -d '{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"ask_deepseek\",\"arguments\":{\"query\":\"你好\"}}}'"
     content += '</pre>\n'
     content += '</div>'
 
