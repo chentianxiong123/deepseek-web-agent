@@ -78,85 +78,29 @@ def _build_mcp():
         """
         if not query or not query.strip():
             return "Error: query cannot be empty"
-
-        from backends.registry import get_backend
-        from accounts import get_active_account
-
-        backend = get_backend()
-        account_config = get_active_account() or {}
-        if not account_config.get("token"):
-            return "Error: No active account. Please login at /admin first."
-
-        answer_parts = []
-        error_occurred = False
-        error_msg = ""
-
-        try:
-            async for ev in backend.chat_turn(
-                user_content=query.strip(),
-                model=model,
-                account_config=account_config,
-                thinking_enabled=thinking,
-                search_enabled=search,
-                system_prompt="",
-            ):
-                if ev.type == "content" and isinstance(ev.val, str) and ev.val:
-                    answer_parts.append(ev.val)
-                elif ev.type == "error":
-                    error_occurred = True
-                    error_msg = str(ev.val)
-                    break
-        except Exception as e:
-            error_occurred = True
-            error_msg = str(e)
-
-        if error_occurred:
-            return f"Error: {error_msg}"
-
-        return "".join(answer_parts) if answer_parts else "(no response)"
+        from mcp_pipeline import mcp_ask_deepseek
+        return await mcp_ask_deepseek(
+            query,
+            model=model,
+            thinking=thinking,
+            search=search,
+        )
 
     # ── 工具：deepseek_models ───────────────────────────────────────────
 
     @mcp.tool()
     async def deepseek_models() -> str:
         """列出 DeepSeek 可用模型、当前 backend 及认证状态。"""
-        from backends.registry import get_backend
-        from accounts import get_active_account
-
-        backend = get_backend()
-        account_config = get_active_account() or {}
-        active_model = (
-            backend.active_model()
-            if hasattr(backend, "active_model")
-            else account_config.get("model", "deepseek-v4-flash")
-        )
-        return (
-            "Available models:\n"
-            "  - deepseek-v4-flash  (default, fast)\n"
-            "  - deepseek-v4-pro    (expert, higher quality)\n\n"
-            f"Current backend: {backend.id} ({backend.display_name})\n"
-            f"Active model: {active_model}\n"
-            f"Authenticated: {backend.is_authenticated()}"
-        )
+        from mcp_pipeline import mcp_deepseek_models
+        return await mcp_deepseek_models()
 
     # ── 工具：deepseek_status ───────────────────────────────────────────
 
     @mcp.tool()
     async def deepseek_status() -> str:
         """检查 DeepSeek 代理当前状态（登录、会话、model）。"""
-        from backends.registry import get_backend
-        from accounts import get_active_account
-
-        backend = get_backend()
-        account_config = get_active_account() or {}
-        has_session = bool(account_config.get("session_id"))
-        return (
-            f"Status: ok\n"
-            f"Authenticated: {backend.is_authenticated()}\n"
-            f"Session active: {has_session}\n"
-            f"Backend: {backend.id} ({backend.display_name})\n"
-            f"Active model: {account_config.get('model', 'deepseek-v4-flash')}"
-        )
+        from mcp_pipeline import mcp_deepseek_status
+        return await mcp_deepseek_status()
 
     # ── 构建 Streamable HTTP + SSE 应用 ─────────────────────────────────
 

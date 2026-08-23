@@ -285,6 +285,37 @@ def render_overview(cfg, usage):
     <a class="btn-ghost btn-sm" href="/admin/tools" style="text-decoration:none">🎮 工具配置</a>
     <a class="btn-ghost btn-sm" href="/admin/debug" style="text-decoration:none">🔍 调试拦截</a>
   </div>
+</div>
+
+<div class="card" style="border-left:3px solid #1677ff">
+  <h2>🔀 架构概览：双线路</h2>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
+    <div style="flex:1;min-width:200px;padding:10px;background:#f0f5ff;border-radius:6px;border:1px solid #d6e4ff">
+      <div style="font-weight:600;color:#1677ff;margin-bottom:6px">📡 OpenAI API 线</div>
+      <div style="font-size:11px;line-height:1.7;color:#555">
+        POST /v1/chat/completions
+        <div style="margin:4px 0 0 12px;color:#888">↓ agent 检测 (Claude Code / Generic)</div>
+        <div style="margin:0 0 0 12px;color:#888">↓ tag 剥离 · housekeeping 拦截</div>
+        <div style="margin:0 0 0 12px;color:#888">↓ rules 过滤 · tool_buffer 缓冲</div>
+        <div style="margin:0 0 0 12px;color:#888">↓ system_prompt 注入</div>
+        <div style="margin:4px 0 0 12px;color:#1677ff;font-weight:500">↓ backend.chat_turn()</div>
+        <div style="margin:0 0 0 12px;color:#888">↓ handler SSE 格式转换</div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:200px;padding:10px;background:#fff7e6;border-radius:6px;border:1px solid #ffd591">
+      <div style="font-weight:600;color:#d46b08;margin-bottom:6px">🔧 MCP 线（独立）</div>
+      <div style="font-size:11px;line-height:1.7;color:#555">
+        POST /mcp/mcp (Streamable HTTP)
+        <div style="margin:4px 0 0 12px;color:#888">↓ mcp_server.py (FastMCP 工具)</div>
+        <div style="margin:0 0 0 12px;color:#888">↓ mcp_pipeline.py (空内容+账号检查)</div>
+        <div style="margin:4px 0 0 12px;color:#d46b08;font-weight:500">↓ backend.chat_turn() ★</div>
+        <div style="margin:0 0 0 12px;color:#888">↓ 纯文本返回</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:8px;padding:6px 10px;background:#f6ffed;border-radius:4px;font-size:11px;color:#389e0d;text-align:center">
+    ★ 两条线在 backend.chat_turn() 汇合 → provider → deepseek_api.chat_completion() 发送给 DeepSeek
+  </div>
 </div>"""
 
     js = """\
@@ -1487,6 +1518,22 @@ async def render_mcp():
     content += '    <h2>🛠 MCP 工具列表 <span id="mcp-tool-count" style="font-size:10px;color:#999;font-weight:400"></span></h2>\n'
     content += '  </div>\n'
     content += '  <div id="mcp-tools-list">' + tools_html + '</div>\n'
+    content += '</div>\n'
+    content += '<div class="card" style="border-left:3px solid #d46b08">\n'
+    content += '  <div class="toolbar">\n'
+    content += '    <h2>\U0001f527 MCP \u72ec\u7acb\u7ba1\u7ebf</h2>\n'
+    content += '  </div>\n'
+    content += '  <div style="font-size:11px;line-height:1.7;background:#fff7e6;padding:10px;border-radius:6px;margin-top:8px">\n'
+    content += '    <div style="font-weight:600;color:#d46b08;margin-bottom:6px">\u5165\u53e3\uff1a/mcp/mcp \u2192 FastMCP \u2192 mcp_server.py</div>\n'
+    content += '    <div>\u2193 <b>mcp_pipeline.py</b> (\u72ec\u7acb\u7f16\u6392)</div>\n'
+    content += '      <div style="margin-left:16px;color:#666">\u2460 \u7a7a\u5185\u5bb9\u68c0\u67e5</div>\n'
+    content += '      <div style="margin-left:16px;color:#666">\u2461 \u8d26\u53f7\u68c0\u67e5</div>\n'
+    content += '    <div>\u2193 backend.chat_turn()  \u2190 \u590d\u7528 \u2605</div>\n'
+    content += '    <div>\u2193 \u7eaf\u6587\u672c\u8fd4\u56de\u7ed9 MCP Client</div>\n'
+    content += '  </div>\n'
+    content += '  <div style="margin-top:8px;padding:6px 10px;background:#fff2f0;border-radius:4px;font-size:10px;color:#cf1322">\n'
+    content += '    \u4e0d\u641e\u5ba1\u6279 \u00b7 \u4e0d\u641e\u62e6\u622a \u00b7 \u4e0d\u641e buffer \u00b7 \u4e0d\u641e system_prompt \u00b7 \u4e0d\u641e housekeeping\n'
+    content += '  </div>\n'
     content += '</div>\n'
     content += '<div class="card">\n'
     content += '  <div class="toolbar">\n'
